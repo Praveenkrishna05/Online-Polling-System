@@ -11,13 +11,13 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Atlas connection
-mongoose.connect('mongodb+srv://praveen_krishna:Praveen%402005@polls.q1w15gv.mongodb.net/polling_system?retryWrites=true&w=majority&appName=Polls'
+mongoose.connect(process.env.MONGO_URI
 )
   .then(() => console.log('Connected to MongoDB Atlas'))
   .catch(err => console.error('MongoDB Atlas connection error:', err));
 
 // JWT Secret
-const JWT_SECRET = 'your_jwt_secret_key';
+const JWT_SECRET = process.env.JWT_SECRET';
 
 // User Schema
 const userSchema = new mongoose.Schema({
