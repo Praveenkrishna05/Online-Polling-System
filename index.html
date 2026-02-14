@@ -1,0 +1,481 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Online Polling System</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Custom animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in {
+      animation: fadeIn 0.5s ease-out forwards;
+    }
+    /* Custom hover effects */
+    .hover-scale {
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .hover-scale:hover {
+      transform: scale(1.02);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+    /* Gradient background for buttons */
+    .gradient-btn {
+      background: linear-gradient(to right, #4f46e5, #7c3aed);
+      transition: background 0.3s ease;
+    }
+    .gradient-btn:hover {
+      background: linear-gradient(to right, #4338ca, #6d28d9);
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-gray-100 to-gray-200 min-h-screen flex items-center justify-center p-6">
+  <div class="max-w-4xl w-full bg-white rounded-2xl shadow-xl p-8 space-y-6">
+    <!-- Header -->
+    <h1 class="text-4xl font-bold text-center text-gray-800 tracking-tight">
+      Online Polling System
+    </h1>
+
+    <!-- User Info Section -->
+    <div id="userInfo" class="hidden flex justify-between items-center bg-indigo-50 p-4 rounded-lg fade-in">
+      <p id="userDetails" class="text-lg font-medium text-indigo-700"></p>
+      <button onclick="logout()" id="logoutButton" class="gradient-btn text-white px-4 py-2 rounded-lg font-semibold hover-scale">
+        Logout
+      </button>
+    </div>
+
+    <!-- Authentication Section -->
+    <div id="authSection" class="bg-gray-50 p-6 rounded-lg shadow-inner fade-in">
+      <h2 id="authTitle" class="text-2xl font-semibold text-gray-700 mb-4 text-center">Login</h2>
+      <div class="space-y-4">
+        <input id="username" type="text" placeholder="Username" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <input id="password" type="password" placeholder="Password" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <div class="flex space-x-4 justify-center">
+          <button onclick="authAction()" class="gradient-btn text-white px-6 py-2 rounded-lg font-semibold hover-scale">Login</button>
+          <button onclick="toggleAuthForm()" class="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-semibold hover:bg-gray-300 hover-scale">Switch to Register</button>
+        </div>
+        <p id="authError" class="text-red-500 text-sm text-center"></p>
+        <p id="authSuccess" class="text-green-500 text-sm text-center"></p>
+      </div>
+    </div>
+
+    <!-- List of Polls -->
+    <div id="pollList" class="space-y-4"></div>
+
+    <!-- Admin Section -->
+    <div id="adminSection" class="hidden bg-indigo-50 p-6 rounded-lg shadow-inner fade-in">
+      <h2 class="text-2xl font-semibold text-indigo-700 mb-4">Admin Dashboard</h2>
+      <div class="flex space-x-4 mb-4">
+        <button onclick="toggleAdminPollForm()" class="gradient-btn text-white px-4 py-2 rounded-lg font-semibold hover-scale">Create/Manage Poll</button>
+        <button onclick="fetchLogs()" class="bg-indigo-200 text-indigo-800 px-4 py-2 rounded-lg font-semibold hover:bg-indigo-300 hover-scale">View Logs</button>
+        <button onclick="fetchVoteAnalysis()" class="bg-indigo-200 text-indigo-800 px-4 py-2 rounded-lg font-semibold hover:bg-indigo-300 hover-scale">Vote Analysis</button>
+      </div>
+      <div id="adminContent" class="space-y-2"></div>
+      <div id="adminPollForm" class="mt-4 bg-white p-4 rounded-lg shadow-inner">
+        <h3 class="text-xl font-semibold text-gray-700 mb-4">Create/Edit Poll</h3>
+        <input id="adminPollQuestion" type="text" placeholder="Enter poll question" required class="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <div id="adminOptions" class="space-y-2 mb-4">
+          <input type="text" class="admin-option-input w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Option 1" required>
+          <input type="text" class="admin-option-input w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Option 2" required>
+        </div>
+        <div class="flex space-x-4">
+          <button onclick="addAdminOption()" class="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 hover-scale">Add Option</button>
+          <button onclick="saveAdminPoll()" class="gradient-btn text-white px-4 py-2 rounded-lg font-semibold hover-scale">Save Poll</button>
+          <button onclick="toggleAdminPollForm()" class="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 hover-scale">Cancel</button>
+        </div>
+        <p id="adminPollError" class="text-red-500 text-sm mt-2"></p>
+      </div>
+    </div>
+
+    <!-- Help Section -->
+    <div class="bg-gray-50 p-6 rounded-lg shadow-inner fade-in">
+      <h2 class="text-2xl font-semibold text-gray-700 mb-4">Help</h2>
+      <p class="text-gray-600 mb-2">Need assistance? Here are some tips:</p>
+      <ul class="list-disc list-inside text-gray-600 space-y-1">
+        <li>Register or login to vote and create polls.</li>
+        <li>Use the "Share" button to share a poll with others.</li>
+        <li>Contact support at support@pollsite.com for further help.</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    let token = null;
+    let isLoginForm = true;
+    let editingPollId = null;
+    let userRole = null;
+    let username = null;
+
+    function toggleAuthForm() {
+      isLoginForm = !isLoginForm;
+      document.getElementById('authTitle').textContent = isLoginForm ? 'Login' : 'Register';
+      document.getElementById('authError').textContent = '';
+      document.getElementById('authSuccess').textContent = '';
+    }
+
+    async function authAction() {
+      const usernameInput = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const url = isLoginForm ? '/api/login' : '/api/register';
+      const successMessage = isLoginForm ? 'Logged in successfully' : 'Registered successfully';
+
+      try {
+        const response = await fetch(`http://localhost:3000${url}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: usernameInput, password })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          document.getElementById('authSuccess').textContent = successMessage;
+          document.getElementById('authError').textContent = '';
+          if (isLoginForm) {
+            token = data.token;
+            localStorage.setItem('token', token);
+            document.getElementById('authSection').style.display = 'none';
+            document.getElementById('userInfo').style.display = 'flex';
+            const user = JSON.parse(atob(token.split('.')[1]));
+            userRole = user.role;
+            username = user.username;
+            document.getElementById('userDetails').textContent = `Logged in as: ${username} (${userRole.charAt(0).toUpperCase() + userRole.slice(1)})`;
+            if (user.role === 'admin') {
+              document.getElementById('adminSection').style.display = 'block';
+            }
+            fetchPolls();
+          } else {
+            toggleAuthForm();
+          }
+        } else {
+          document.getElementById('authError').textContent = data.error || 'Error occurred';
+        }
+      } catch (error) {
+        document.getElementById('authError').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    async function logout() {
+      if (!token) return;
+      try {
+        await fetch('http://localhost:3000/api/logout', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      } catch (error) {
+        console.error('Error logging logout:', error.message);
+      }
+      token = null;
+      userRole = null;
+      username = null;
+      localStorage.removeItem('token');
+      document.getElementById('authSection').style.display = 'block';
+      document.getElementById('userInfo').style.display = 'none';
+      document.getElementById('adminSection').style.display = 'none';
+      document.getElementById('pollList').innerHTML = '';
+      document.getElementById('adminContent').innerHTML = '';
+    }
+
+    async function vote(pollId, optionIndex) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/polls/${pollId}/vote`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ optionIndex })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          fetchPolls();
+        } else {
+          alert(data.error || 'Failed to vote.');
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function likePoll(pollId) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/polls/${pollId}/like`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await response.json();
+        if (response.ok) {
+          fetchPolls();
+        } else {
+          alert(data.error || 'Failed to like poll.');
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    function sharePoll(pollId) {
+      const shareLink = `${window.location.origin}/poll/${pollId}`;
+      navigator.clipboard.writeText(shareLink).then(() => {
+        alert('Poll link copied to clipboard: ' + shareLink);
+      });
+    }
+
+    async function fetchPolls() {
+      try {
+        console.log('Fetching polls from: http://localhost:3000/api/polls');
+        const response = await fetch('http://localhost:3000/api/polls', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers.get('Content-Type'));
+        const text = await response.text();
+        console.log('Raw response:', text.substring(0, 100));
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}, Response: ${text}`);
+        }
+        const contentType = response.headers.get('Content-Type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error(`Expected JSON, got ${contentType}: ${text}`);
+        }
+        const polls = JSON.parse(text);
+        const pollList = document.getElementById('pollList');
+        pollList.innerHTML = '<h2 class="text-2xl font-semibold text-gray-700 mb-4">Active Polls</h2>';
+        polls.forEach(poll => {
+          const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes, 0);
+          const pollDiv = document.createElement('div');
+          pollDiv.className = 'bg-white p-6 rounded-lg shadow-md hover-scale fade-in';
+          pollDiv.innerHTML = `
+            <h3 class="text-xl font-semibold text-gray-800 mb-2">${poll.question}</h3>
+            <p class="text-gray-600 mb-4">Created by: ${poll.createdBy ? poll.createdBy.username : 'Anonymous'}</p>
+            <div class="space-y-2 mb-4">
+              ${poll.options.map((option, index) => `
+                <div class="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                  ${userRole === 'user' ? `
+                    <button onclick="vote('${poll._id}', ${index})" class="bg-indigo-500 text-white px-4 py-1 rounded-lg hover:bg-indigo-600 hover-scale">${option.text}</button>
+                  ` : `
+                    <span class="text-gray-700">${option.text}</span>
+                  `}
+                  <span class="text-gray-600">${option.votes} votes (${totalVotes ? ((option.votes / totalVotes) * 100).toFixed(1) : 0}%)</span>
+                </div>
+              `).join('')}
+            </div>
+            <div class="flex space-x-3">
+              <button onclick="likePoll('${poll._id}')" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 hover-scale">Like (${poll.likes})</button>
+              <button onclick="sharePoll('${poll._id}')" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 hover-scale">Share</button>
+              ${token ? `
+                <button onclick="editPoll('${poll._id}')" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 hover-scale">Edit</button>
+                <button onclick="deletePoll('${poll._id}')" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 hover-scale">Delete</button>
+              ` : ''}
+            </div>
+          `;
+          pollList.appendChild(pollDiv);
+        });
+      } catch (error) {
+        console.error('Error fetching polls:', error);
+        document.getElementById('pollList').innerHTML = '<p class="text-red-500">Error loading polls. Check console for details.</p>';
+      }
+    }
+
+    function toggleAdminPollForm() {
+      const form = document.getElementById('adminPollForm');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+      if (form.style.display === 'block') {
+        document.getElementById('adminPollQuestion').value = '';
+        document.getElementById('adminOptions').innerHTML = `
+          <input type="text" class="admin-option-input w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Option 1" required>
+          <input type="text" class="admin-option-input w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Option 2" required>
+        `;
+        editingPollId = null;
+        document.getElementById('adminPollError').textContent = '';
+      }
+    }
+
+    function addAdminOption() {
+      const optionsDiv = document.getElementById('adminOptions');
+      const newOption = document.createElement('input');
+      newOption.type = 'text';
+      newOption.className = 'admin-option-input w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500';
+      newOption.placeholder = `Option ${optionsDiv.children.length + 1}`;
+      newOption.required = true;
+      optionsDiv.appendChild(newOption);
+    }
+
+    async function saveAdminPoll() {
+      const question = document.getElementById('adminPollQuestion').value;
+      const options = Array.from(document.getElementsByClassName('admin-option-input'))
+        .map(input => input.value)
+        .filter(value => value.trim() !== '');
+
+      if (!question || options.length < 2) {
+        document.getElementById('adminPollError').textContent = 'Please enter a question and at least two options.';
+        return;
+      }
+
+      try {
+        const url = editingPollId ? `/api/admin/polls/${editingPollId}` : '/api/polls';
+        const method = editingPollId ? 'PUT' : 'POST';
+        const response = await fetch(`http://localhost:3000${url}`, {
+          method: method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ question, options })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          toggleAdminPollForm();
+          fetchPolls();
+        } else {
+          document.getElementById('adminPollError').textContent = data.error || 'Failed to save poll.';
+        }
+      } catch (error) {
+        document.getElementById('adminPollError').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    async function editPoll(pollId) {
+      try {
+        const response = await fetch(`http://localhost:3000/api/polls`);
+        const polls = await response.json();
+        const poll = polls.find(p => p._id === pollId);
+        if (!poll) return;
+        document.getElementById('adminPollForm').style.display = 'block';
+        document.getElementById('adminPollQuestion').value = poll.question;
+        document.getElementById('adminOptions').innerHTML = poll.options.map((opt, index) => `
+          <input type="text" class="admin-option-input w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" value="${opt.text}" placeholder="Option ${index + 1}" required>
+        `).join('');
+        editingPollId = pollId;
+        document.getElementById('adminPollError').textContent = '';
+      } catch (error) {
+        document.getElementById('adminPollError').textContent = 'Error: ' + error.message;
+      }
+    }
+
+    async function deletePoll(pollId) {
+      if (!confirm('Are you sure you want to delete this poll?')) return;
+      try {
+        const response = await fetch(`http://localhost:3000/api/admin/polls/${pollId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        if (response.ok) {
+          fetchPolls();
+        } else {
+          alert(data.error || 'Failed to delete poll.');
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function fetchLogs() {
+      try {
+        const response = await fetch('http://localhost:3000/api/admin/logs', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const logs = await response.json();
+        const adminContent = document.getElementById('adminContent');
+        adminContent.innerHTML = '<h3 class="text-xl font-semibold text-gray-700 mb-2">Activity Logs</h3>';
+        logs.forEach(log => {
+          const logDiv = document.createElement('div');
+          logDiv.className = 'bg-gray-50 p-3 rounded-lg';
+          logDiv.textContent = `${log.userId.username}: ${log.action} at ${new Date(log.timestamp).toLocaleString()}`;
+          adminContent.appendChild(logDiv);
+        });
+      } catch (error) {
+        alert('Error fetching logs: ' + error.message);
+      }
+    }
+
+    async function fetchVoteAnalysis() {
+      try {
+        const response = await fetch('http://localhost:3000/api/admin/vote-analysis', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        const adminContent = document.getElementById('adminContent');
+        adminContent.innerHTML = '<h3 class="text-xl font-semibold text-gray-700 mb-2">Vote Analysis</h3>';
+        data.forEach(poll => {
+          const pollDiv = document.createElement('div');
+          pollDiv.className = 'bg-gray-50 p-4 rounded-lg mb-2';
+          pollDiv.innerHTML = `
+            <h4 class="text-lg font-semibold text-gray-800">${poll.question}</h4>
+            <p class="text-gray-600">Total Votes: ${poll.totalVotes}</p>
+            <p class="text-gray-600">Likes: ${poll.likes}</p>
+            ${poll.options.map(opt => `
+              <p class="text-gray-600">${opt.text}: ${opt.votes} votes</p>
+            `).join('')}
+          `;
+          adminContent.appendChild(pollDiv);
+        });
+      } catch (error) {
+        alert('Error fetching vote analysis: ' + error.message);
+      }
+    }
+
+    window.onload = () => {
+      token = localStorage.getItem('token');
+      if (token) {
+        document.getElementById('authSection').style.display = 'none';
+        document.getElementById('userInfo').style.display = 'flex';
+        const user = JSON.parse(atob(token.split('.')[1]));
+        userRole = user.role;
+        username = user.username;
+        document.getElementById('userDetails').textContent = `Logged in as: ${username} (${userRole.charAt(0).toUpperCase() + userRole.slice(1)})`;
+        if (user.role === 'admin') {
+          document.getElementById('adminSection').style.display = 'block';
+        }
+        fetchPolls();
+      }
+    };
+  </script>
+</body>
+</html>
