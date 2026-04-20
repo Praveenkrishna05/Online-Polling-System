@@ -1,0 +1,454 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Online Polling System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Poppins', sans-serif; }
+    .glass { backdrop-filter: blur(8px); background: rgba(255, 255, 255, 0.78); }
+  </style>
+</head>
+<body class="min-h-screen bg-[radial-gradient(circle_at_top,#ffe8d6,#fff7ed_45%,#f8fafc)] p-4 md:p-8 text-slate-800">
+  <main class="mx-auto max-w-5xl space-y-6">
+    <header class="rounded-3xl glass border border-orange-100 p-6 shadow-sm">
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-orange-900">Online Polling System</h1>
+      <p class="text-sm md:text-base text-slate-600 mt-1">Create polls, vote once per poll, and track activity.</p>
+    </header>
+
+    <section id="userInfo" class="hidden rounded-2xl bg-emerald-50 border border-emerald-200 p-4 items-center justify-between">
+      <p id="userDetails" class="font-medium text-emerald-900"></p>
+      <button onclick="logout()" class="rounded-lg bg-emerald-700 text-white px-4 py-2 font-medium hover:bg-emerald-800">Logout</button>
+    </section>
+
+    <section id="authSection" class="rounded-3xl glass border border-orange-100 p-6 shadow-sm">
+      <h2 id="authTitle" class="text-2xl font-semibold text-orange-900">Login</h2>
+      <div class="mt-4 grid gap-3">
+        <input id="username" type="text" placeholder="Username" class="w-full rounded-lg border border-slate-300 p-3 focus:outline-none focus:ring-2 focus:ring-orange-400" />
+        <input id="password" type="password" placeholder="Password" class="w-full rounded-lg border border-slate-300 p-3 focus:outline-none focus:ring-2 focus:ring-orange-400" />
+        <div class="flex gap-3">
+          <button onclick="authAction()" class="rounded-lg bg-orange-600 text-white px-5 py-2 font-medium hover:bg-orange-700">Submit</button>
+          <button onclick="toggleAuthForm()" id="toggleAuthButton" class="rounded-lg bg-slate-100 text-slate-700 px-5 py-2 font-medium hover:bg-slate-200">Switch to Register</button>
+        </div>
+        <p id="authError" class="text-sm text-red-600"></p>
+        <p id="authSuccess" class="text-sm text-emerald-700"></p>
+      </div>
+    </section>
+
+    <section class="rounded-3xl glass border border-orange-100 p-6 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-2xl font-semibold text-orange-900">Active Polls</h2>
+        <button onclick="fetchPolls()" class="rounded-lg bg-slate-100 text-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-200">Refresh</button>
+      </div>
+      <div id="pollList" class="space-y-3"></div>
+    </section>
+
+    <section id="adminSection" class="hidden rounded-3xl bg-amber-50 border border-amber-200 p-6 shadow-sm">
+      <h2 class="text-2xl font-semibold text-amber-900">Admin Dashboard</h2>
+      <div class="mt-4 flex flex-wrap gap-3">
+        <button onclick="toggleAdminPollForm()" class="rounded-lg bg-amber-700 text-white px-4 py-2 font-medium hover:bg-amber-800">Create or Edit Poll</button>
+        <button onclick="fetchLogs()" class="rounded-lg bg-amber-100 text-amber-900 px-4 py-2 font-medium hover:bg-amber-200">View Logs</button>
+        <button onclick="fetchVoteAnalysis()" class="rounded-lg bg-amber-100 text-amber-900 px-4 py-2 font-medium hover:bg-amber-200">Vote Analysis</button>
+      </div>
+
+      <div id="adminPollForm" class="hidden mt-4 rounded-xl bg-white p-4 border border-amber-100">
+        <h3 class="text-lg font-semibold text-slate-800 mb-3">Poll Form</h3>
+        <input id="adminPollQuestion" type="text" placeholder="Poll question" class="w-full rounded-lg border border-slate-300 p-3 mb-3 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+        <div id="adminOptions" class="space-y-2">
+          <input type="text" class="admin-option-input w-full rounded-lg border border-slate-300 p-3" placeholder="Option 1" />
+          <input type="text" class="admin-option-input w-full rounded-lg border border-slate-300 p-3" placeholder="Option 2" />
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button onclick="addAdminOption()" class="rounded-lg bg-emerald-600 text-white px-4 py-2 font-medium hover:bg-emerald-700">Add Option</button>
+          <button onclick="saveAdminPoll()" class="rounded-lg bg-amber-700 text-white px-4 py-2 font-medium hover:bg-amber-800">Save Poll</button>
+          <button onclick="toggleAdminPollForm()" class="rounded-lg bg-slate-100 text-slate-700 px-4 py-2 font-medium hover:bg-slate-200">Cancel</button>
+        </div>
+        <p id="adminPollError" class="text-sm text-red-600 mt-2"></p>
+      </div>
+
+      <div id="adminContent" class="mt-4 space-y-2"></div>
+    </section>
+  </main>
+
+  <script>
+    let token = localStorage.getItem('token');
+    let userRole = null;
+    let username = null;
+    let editingPollId = null;
+    let isLoginForm = true;
+
+    async function apiFetch(path, options = {}) {
+      const headers = { ...(options.headers || {}) };
+
+      if (!headers['Content-Type'] && options.body) {
+        headers['Content-Type'] = 'application/json';
+      }
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(path, { ...options, headers });
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        data = { error: 'Unexpected server response' };
+      }
+
+      if (!response.ok) {
+        const error = new Error(data.error || 'Request failed');
+        error.status = response.status;
+        throw error;
+      }
+
+      return data;
+    }
+
+    function parseToken(jwtToken) {
+      try {
+        return JSON.parse(atob(jwtToken.split('.')[1]));
+      } catch {
+        return null;
+      }
+    }
+
+    function updateAuthUI() {
+      const userInfo = document.getElementById('userInfo');
+      const authSection = document.getElementById('authSection');
+      const adminSection = document.getElementById('adminSection');
+
+      if (token && username && userRole) {
+        userInfo.classList.remove('hidden');
+        userInfo.classList.add('flex');
+        authSection.classList.add('hidden');
+        document.getElementById('userDetails').textContent = `Logged in as: ${username} (${userRole})`;
+        if (userRole === 'admin') {
+          adminSection.classList.remove('hidden');
+        } else {
+          adminSection.classList.add('hidden');
+        }
+      } else {
+        userInfo.classList.add('hidden');
+        userInfo.classList.remove('flex');
+        authSection.classList.remove('hidden');
+        adminSection.classList.add('hidden');
+      }
+    }
+
+    function applySessionFromToken() {
+      if (!token) {
+        userRole = null;
+        username = null;
+        updateAuthUI();
+        return;
+      }
+
+      const user = parseToken(token);
+      if (!user || !user.username || !user.role) {
+        token = null;
+        userRole = null;
+        username = null;
+        localStorage.removeItem('token');
+      } else {
+        userRole = user.role;
+        username = user.username;
+      }
+
+      updateAuthUI();
+    }
+
+    function toggleAuthForm() {
+      isLoginForm = !isLoginForm;
+      document.getElementById('authTitle').textContent = isLoginForm ? 'Login' : 'Register';
+      document.getElementById('toggleAuthButton').textContent = isLoginForm ? 'Switch to Register' : 'Switch to Login';
+      document.getElementById('authError').textContent = '';
+      document.getElementById('authSuccess').textContent = '';
+    }
+
+    async function authAction() {
+      const usernameInput = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const endpoint = isLoginForm ? '/api/login' : '/api/register';
+
+      document.getElementById('authError').textContent = '';
+      document.getElementById('authSuccess').textContent = '';
+
+      if (!usernameInput || !password) {
+        document.getElementById('authError').textContent = 'Username and password are required.';
+        return;
+      }
+
+      try {
+        const payload = await apiFetch(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({ username: usernameInput, password })
+        });
+
+        if (isLoginForm) {
+          token = payload.token;
+          localStorage.setItem('token', token);
+          applySessionFromToken();
+          document.getElementById('authSuccess').textContent = 'Logged in successfully.';
+        } else {
+          document.getElementById('authSuccess').textContent = 'Registered successfully. You can now login.';
+          toggleAuthForm();
+        }
+
+        await fetchPolls();
+      } catch (error) {
+        document.getElementById('authError').textContent = error.message;
+      }
+    }
+
+    async function logout() {
+      try {
+        if (token) {
+          await apiFetch('/api/logout', { method: 'POST' });
+        }
+      } catch {
+        // No-op: user can still log out locally.
+      }
+
+      token = null;
+      userRole = null;
+      username = null;
+      localStorage.removeItem('token');
+      document.getElementById('adminContent').innerHTML = '';
+      updateAuthUI();
+      await fetchPolls();
+    }
+
+    async function fetchPolls() {
+      const pollList = document.getElementById('pollList');
+      pollList.innerHTML = '<p class="text-slate-500">Loading polls...</p>';
+
+      try {
+        const polls = await apiFetch('/api/polls');
+
+        if (!Array.isArray(polls) || polls.length === 0) {
+          pollList.innerHTML = '<p class="text-slate-500">No polls found yet.</p>';
+          return;
+        }
+
+        pollList.innerHTML = '';
+        polls.forEach((poll) => {
+          const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes, 0);
+
+          const optionMarkup = poll.options.map((option, index) => {
+            const percentage = totalVotes ? ((option.votes / totalVotes) * 100).toFixed(1) : '0.0';
+            const canVote = userRole === 'user';
+
+            return `
+              <div class="rounded-lg border border-slate-200 p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                <div class="font-medium text-slate-700">${option.text}</div>
+                <div class="text-sm text-slate-600">${option.votes} votes (${percentage}%)</div>
+                ${canVote ? `<button onclick="vote('${poll._id}', ${index})" class="rounded-md bg-orange-600 text-white px-3 py-1 text-sm hover:bg-orange-700">Vote</button>` : ''}
+              </div>
+            `;
+          }).join('');
+
+          const adminActions = userRole === 'admin'
+            ? `
+              <button onclick="editPoll('${poll._id}')" class="rounded-md bg-amber-600 text-white px-3 py-1 text-sm hover:bg-amber-700">Edit</button>
+              <button onclick="deletePoll('${poll._id}')" class="rounded-md bg-rose-600 text-white px-3 py-1 text-sm hover:bg-rose-700">Delete</button>
+            `
+            : '';
+
+          const likeDisabled = token ? '' : 'disabled';
+          const likeClass = token ? 'bg-sky-600 hover:bg-sky-700' : 'bg-slate-300 cursor-not-allowed';
+
+          const pollCard = document.createElement('article');
+          pollCard.className = 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm';
+          pollCard.innerHTML = `
+            <h3 class="text-lg font-semibold text-slate-800">${poll.question}</h3>
+            <p class="text-sm text-slate-500 mb-3">Created by: ${poll.createdBy?.username || 'Unknown'}</p>
+            <div class="space-y-2">${optionMarkup}</div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button ${likeDisabled} onclick="likePoll('${poll._id}')" class="rounded-md text-white px-3 py-1 text-sm ${likeClass}">Like (${poll.likes})</button>
+              <button onclick="sharePoll('${poll._id}')" class="rounded-md bg-emerald-600 text-white px-3 py-1 text-sm hover:bg-emerald-700">Share</button>
+              ${adminActions}
+            </div>
+          `;
+
+          pollList.appendChild(pollCard);
+        });
+      } catch (error) {
+        pollList.innerHTML = `<p class="text-red-600">${error.message}</p>`;
+      }
+    }
+
+    async function vote(pollId, optionIndex) {
+      try {
+        await apiFetch(`/api/polls/${pollId}/vote`, {
+          method: 'POST',
+          body: JSON.stringify({ optionIndex })
+        });
+        await fetchPolls();
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    async function likePoll(pollId) {
+      if (!token) {
+        alert('Please login to like polls.');
+        return;
+      }
+
+      try {
+        await apiFetch(`/api/polls/${pollId}/like`, { method: 'POST' });
+        await fetchPolls();
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    function sharePoll(pollId) {
+      const link = `${window.location.origin}/poll/${pollId}`;
+      navigator.clipboard.writeText(link)
+        .then(() => alert('Poll link copied: ' + link))
+        .catch(() => alert('Could not copy link.'));
+    }
+
+    function toggleAdminPollForm() {
+      if (userRole !== 'admin') return;
+
+      const form = document.getElementById('adminPollForm');
+      const willShow = form.classList.contains('hidden');
+      form.classList.toggle('hidden');
+
+      if (willShow) {
+        editingPollId = null;
+        document.getElementById('adminPollQuestion').value = '';
+        document.getElementById('adminOptions').innerHTML = `
+          <input type="text" class="admin-option-input w-full rounded-lg border border-slate-300 p-3" placeholder="Option 1" />
+          <input type="text" class="admin-option-input w-full rounded-lg border border-slate-300 p-3" placeholder="Option 2" />
+        `;
+        document.getElementById('adminPollError').textContent = '';
+      }
+    }
+
+    function addAdminOption() {
+      const optionsDiv = document.getElementById('adminOptions');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'admin-option-input w-full rounded-lg border border-slate-300 p-3';
+      input.placeholder = `Option ${optionsDiv.children.length + 1}`;
+      optionsDiv.appendChild(input);
+    }
+
+    async function saveAdminPoll() {
+      const question = document.getElementById('adminPollQuestion').value.trim();
+      const options = Array.from(document.querySelectorAll('.admin-option-input'))
+        .map((input) => input.value.trim())
+        .filter(Boolean);
+
+      if (!question || options.length < 2) {
+        document.getElementById('adminPollError').textContent = 'Enter a question and at least two options.';
+        return;
+      }
+
+      try {
+        const endpoint = editingPollId ? `/api/admin/polls/${editingPollId}` : '/api/polls';
+        const method = editingPollId ? 'PUT' : 'POST';
+
+        await apiFetch(endpoint, {
+          method,
+          body: JSON.stringify({ question, options })
+        });
+
+        toggleAdminPollForm();
+        await fetchPolls();
+      } catch (error) {
+        document.getElementById('adminPollError').textContent = error.message;
+      }
+    }
+
+    async function editPoll(pollId) {
+      if (userRole !== 'admin') {
+        alert('Admin access required.');
+        return;
+      }
+
+      try {
+        const polls = await apiFetch('/api/polls');
+        const poll = polls.find((item) => item._id === pollId);
+        if (!poll) throw new Error('Poll not found.');
+
+        document.getElementById('adminPollForm').classList.remove('hidden');
+        document.getElementById('adminPollQuestion').value = poll.question;
+        document.getElementById('adminOptions').innerHTML = poll.options
+          .map((opt, index) => `<input type="text" class="admin-option-input w-full rounded-lg border border-slate-300 p-3" value="${opt.text}" placeholder="Option ${index + 1}" />`)
+          .join('');
+
+        editingPollId = pollId;
+        document.getElementById('adminPollError').textContent = '';
+      } catch (error) {
+        document.getElementById('adminPollError').textContent = error.message;
+      }
+    }
+
+    async function deletePoll(pollId) {
+      if (userRole !== 'admin') {
+        alert('Admin access required.');
+        return;
+      }
+
+      if (!confirm('Delete this poll?')) return;
+
+      try {
+        await apiFetch(`/api/admin/polls/${pollId}`, { method: 'DELETE' });
+        await fetchPolls();
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    async function fetchLogs() {
+      try {
+        const logs = await apiFetch('/api/admin/logs');
+        const adminContent = document.getElementById('adminContent');
+        adminContent.innerHTML = '<h3 class="text-lg font-semibold text-slate-800">Activity Logs</h3>';
+
+        logs.forEach((log) => {
+          const item = document.createElement('div');
+          item.className = 'rounded-lg bg-white border border-amber-100 p-3';
+          item.textContent = `${log.userId?.username || 'Unknown'}: ${log.action} at ${new Date(log.timestamp).toLocaleString()}`;
+          adminContent.appendChild(item);
+        });
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    async function fetchVoteAnalysis() {
+      try {
+        const analysis = await apiFetch('/api/admin/vote-analysis');
+        const adminContent = document.getElementById('adminContent');
+        adminContent.innerHTML = '<h3 class="text-lg font-semibold text-slate-800">Vote Analysis</h3>';
+
+        analysis.forEach((poll) => {
+          const item = document.createElement('div');
+          item.className = 'rounded-lg bg-white border border-amber-100 p-3';
+          item.innerHTML = `
+            <h4 class="font-semibold">${poll.question}</h4>
+            <p class="text-sm text-slate-600">Total votes: ${poll.totalVotes}</p>
+            <p class="text-sm text-slate-600">Likes: ${poll.likes}</p>
+            ${poll.options.map((opt) => `<p class="text-sm text-slate-600">${opt.text}: ${opt.votes}</p>`).join('')}
+          `;
+          adminContent.appendChild(item);
+        });
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    applySessionFromToken();
+    fetchPolls();
+  </script>
+</body>
+</html>
